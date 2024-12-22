@@ -1,149 +1,115 @@
-# Tic tac toe con Q-learning
-
-import numpy as np
-from itertools import product
 import matplotlib.pyplot as plt
-from game_demo import start_game
+import numpy as np
 import random
 
-# Definimos el tablero
-board = np.zeros((3,3))
+# Definir recompensas
+REWARD_WIN = 1
+REWARD_LOSE = -1
+REWARD_DRAW = 0
 
-REWARD_WIN = 100
-REWARD_DRAW = -3
-REWARD_LOSE = -100
-REWARD_DEFAULT = 0
-
-# Parámetros de Q-learning
+# Hiperparámetros
 alpha = 0.1  # Tasa de aprendizaje
-gamma = 0.8  # Factor de descuento
+gamma = 0.9  # Factor de descuento
 epsilon = 0.1  # Tasa de exploración
+PARTIDAS_POR_EPISODIO = 100
 
-def generate_states():
-    """Genera todos los estados posibles del tablero de Tic-Tac-Toe."""
-    all_states = [''.join(p) for p in product(" XO", repeat=9)]
-    valid_states = [s for s in all_states if is_valid_state(s)]
-    return valid_states
+# Inicializar tabla Q
+Q = {}
 
-def is_valid_state(state):
-    """Verifica si el estado del tablero es válido."""
-    x_count = state.count("X")
-    o_count = state.count("O")
-    return 0 <= x_count - o_count <= 1
-
-def is_winner(state, player):
-    """Verifica si el jugador ha ganado en el estado dado."""
+def is_winner(board, player):
     win_patterns = [
-        [0, 1, 2], [3, 4, 5], [6, 7, 8],  # Filas
-        [0, 3, 6], [1, 4, 7], [2, 5, 8],  # Columnas
-        [0, 4, 8], [2, 4, 6]              # Diagonales
+        [(0, 0), (0, 1), (0, 2)],  # Filas
+        [(1, 0), (1, 1), (1, 2)],
+        [(2, 0), (2, 1), (2, 2)],
+        [(0, 0), (1, 0), (2, 0)],  # Columnas
+        [(0, 1), (1, 1), (2, 1)],
+        [(0, 2), (1, 2), (2, 2)],
+        [(0, 0), (1, 1), (2, 2)],  # Diagonales
+        [(0, 2), (1, 1), (2, 0)]
     ]
-    return any(all(state[i] == player for i in pattern) for pattern in win_patterns)
+    return any(all(board[x][y] == player for x, y in pattern) for pattern in win_patterns)
 
-def build_reward_matrix(states):
-    """Construye la matriz R para los estados."""
-    N = len(states)
-    R = np.full((N, N), -1)  # Inicializa con -1 (movimientos inválidos)
-    
-    for i, state in enumerate(states):
-        for j in range(9):  # Itera sobre las 9 celdas posibles
-            if state[j] == " ":  # Si la celda está vacía
-                for player in ["X", "O"]:
-                    new_state = state[:j] + player + state[j+1:]
-                    if new_state in states:
-                        k = states.index(new_state)
-                        if is_winner(new_state, player):
-                            R[i][k] = REWARD_WIN  # Victoria
-                        elif is_winner(new_state, "O" if player == "X" else "X"):
-                            R[i][k] = REWARD_LOSE  # Derrota
-                        else:
-                            R[i][k] = REWARD_DEFAULT  # Movimiento válido sin victoria
-    return R
+def board_to_state(board):
+    """Convierte un tablero en un string para usar como clave."""
+    return ''.join(''.join(row) for row in board)
 
-# Generar estados y matriz R
-states = generate_states()
-R = build_reward_matrix(states)
+def available_actions(board):
+    """Devuelve las acciones disponibles en el tablero."""
+    return [(i, j) for i in range(3) for j in range(3) if board[i][j] == " "]
 
-n = len(states)  # Número de estados válidos
+def state_to_board(state):
+    """Convierte un string de estado a un tablero."""
+    return [list(state[i:i+3]) for i in range(0, len(state), 3)]
 
-# Ejemplo de matriz R para los primeros 10 estados
-print(R)
+def update_Q(state, action, reward, next_state):
+    """Actualiza la tabla Q usando la fórmula Q-learning."""
+    state_action = (state, action)
+    if state_action not in Q:
+        Q[state_action] = 0
+    next_board = state_to_board(next_state)
+    max_Q_next = max((Q.get((next_state, a), 0) for a in available_actions(next_board)), default=0)
+    Q[state_action] += alpha * (reward + gamma * max_Q_next - Q[state_action])
 
-def available_actions(state):
-  current_state_row = R[state,]
-  av_act = np.where(current_state_row >= 0)[0]
-  return av_act
+def play_game():
+    """Simula un juego entre la máquina y un jugador aleatorio."""
+    board = [[" " for _ in range(3)] for _ in range(3)]
+    machine_turn = random.choice([True, False])
+    while True:
+        state = board_to_state(board)
+        if machine_turn:
+            actions = available_actions(board)
+            if not actions:
+                return REWARD_DRAW  # Empate
+            if random.random() < epsilon:
+                action = random.choice(actions)  # Exploración
+            else:
+                Q_values = {a: Q.get((state, a), 0) for a in actions}
+                action = max(Q_values, key=Q_values.get)  # Explotación
+            board[action[0]][action[1]] = "X"
+            if is_winner(board, "X"):
+                update_Q(state, action, REWARD_WIN, board_to_state(board))
+                return REWARD_WIN
+        else:
+            actions = available_actions(board)
+            if not actions:
+                return REWARD_DRAW  # Empate
+            action = random.choice(actions)
+            board[action[0]][action[1]] = "O"
+            if is_winner(board, "O"):
+                update_Q(state, action, REWARD_LOSE, board_to_state(board))
+                return REWARD_LOSE
 
-def sample_next_action(state, available_actions_range, epsilon=0.1):
-    if np.random.rand() < epsilon:
-        # Exploración: elegir una acción aleatoria
-        return int(np.random.choice(available_actions_range, 1))
-    else:
-        # Explotación: elegir la mejor acción (máximo valor Q)
-        Q_values = Q[state, available_actions_range]
-        return int(available_actions_range[np.argmax(Q_values)])
-
-Q = np.zeros((n, n))
-
-def update(current_state, action, gamma):
-
-    max_index = np.where(Q[action,] == np.max(Q[action,]))[0]
-
-    if max_index.shape[0] > 1:
-        max_index = int(np.random.choice(max_index, size = 1))
-    else:
-        max_index = int(max_index)
-    max_value = Q[action, max_index]
-
-    # Q learning formula
-    Q[current_state, action] = R[current_state, action] + gamma * max_value
-
-    isWin = is_winner(states[action], "X")
-
-    return isWin
-
-def canPlay(state):
-    return state.count(" ") > 0
-
-PARTIDAS_POR_EPISODIO = 10
+        machine_turn = not machine_turn
 
 win_rates = []
+loss_rates = []
+draw_rates = []
 for i in range(10000):
     wins = 0
+    losses = 0
+    draws = 0
     for j in range(PARTIDAS_POR_EPISODIO):
-        print(states[0])
-        current_state = np.zeros(n)  # Estado inicial como arreglo vacío
-        machine_turn = np.random.choice([True, False])  # Alternar quién empieza
-
-        while True:
-            av_actions = available_actions(current_state)
-            if av_actions.shape[0] == 0:
-                break
-
-            if machine_turn:
-                action = sample_next_action(current_state, av_actions, epsilon)
-                isWin = update(current_state, action, gamma)
-                current_state = action
-                if isWin:
-                    wins += 1
-                    break
-            else:
-                action = random.choice(av_actions)  # Otro ente juega aleatoriamente
-                print(action)
-                current_state = action
-
-            machine_turn = not machine_turn  # Alternar turnos
-
+        reward = play_game()
+        if reward == REWARD_WIN:
+            wins += 1
+        if reward == REWARD_LOSE:
+            losses += 1
+        if reward == REWARD_DRAW:
+            draws += 1
     if (i + 1) % 1000 == 0:
         win_rates.append(wins / PARTIDAS_POR_EPISODIO)
+        loss_rates.append(losses / PARTIDAS_POR_EPISODIO)
+        draw_rates.append(draws / PARTIDAS_POR_EPISODIO)
         print("Win rate after {} simulations: {:.2f}%".format(i + 1, np.mean(win_rates) * 100))
+        print("Loss rate after {} simulations: {:.2f}%".format(i + 1, np.mean(loss_rates) * 100))
+        print("Draw rate after {} simulations: {:.2f}%".format(i + 1, np.mean(draw_rates) * 100))
+        print('\n*******************************************************************************************\n')
 
 plt.ion()
-plt.plot(win_rates)
+plt.plot(win_rates, label="Win Rate")
+plt.plot(loss_rates, label="Loss Rate")
+plt.plot(draw_rates, label="Draw Rate")
 plt.xlabel("Simulation")
-plt.ylabel("Win rate")
+plt.ylabel("Rate")
+plt.legend()
 plt.show()
-
-start_game(states, Q)
-
-

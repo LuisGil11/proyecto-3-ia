@@ -4,7 +4,6 @@ import numpy as np
 
 ia = None
 Q = []
-possible_states = []
 
 def check_winner():
     """Verifica si hay un ganador o un empate."""
@@ -99,28 +98,29 @@ def check_state():
     return ''.join(state)
 
 class IA:
-    def __init__(self, states, Q_matrix):
-        self.Q = Q_matrix
-        self.states = states
+    def __init__(self, Q):
+        self.Q = Q
     
+    def get_possible_actions(self, state):
+        return [i for i in range(9) if state[i] == " "]
+
     def play(self, current_state):
-        state_index = self.states.index(current_state)
-        action = np.argmax(self.Q[state_index])
-        move = self.states[action]
 
-        action_index = next(i for i in range(len(current_state)) if current_state[i] != move[i])
+        possible_actions = self.get_possible_actions(current_state)
+        if not possible_actions:
+            return
+        
+        Q_values = {a: self.Q.get((current_state, a), 0) for a in possible_actions}
 
-        row = action_index // 3
-        col = action_index % 3
-        print(row, col)
+        best_action = max(Q_values, key=Q_values.get)
+        # Convertir el índice de la acción a coordenadas de fila y columna
+        row, col = divmod(best_action, 3)
         on_click(row, col)
 
 
-def start_game(states, Q_matrix):
+def start_game(Q_matrix):
     global ia
     global Q
-    global possible_states
     Q = Q_matrix
-    possible_states = states
-    ia = IA(possible_states, Q)
+    ia = IA(Q)
     root.mainloop()
