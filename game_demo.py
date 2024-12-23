@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import numpy as np
+import random
 
 ia = None
 Q = []
@@ -54,18 +55,22 @@ def on_click(row, col):
 def reset_game():
     """Reinicia el juego."""
     global current_player
-    current_player = "X"
+    current_player = random.choice(["X", "O"])
+    print(f"current_player: {current_player}")
     label_turn["text"] = f"Turno de: {current_player}"
     for row in buttons:
         for button in row:
             button["text"] = ""
+    if (current_player == "O"):
+        ia.play(check_state())
 
 # Crear la ventana principal
 root = tk.Tk()
 root.title("Tic Tac Toe")
 
 # Variables globales
-current_player = "X"
+global current_player
+current_player = random.choice(["X", "O"])
 buttons = []
 
 # Crear la etiqueta para mostrar el turno
@@ -99,28 +104,58 @@ def check_state():
     return ''.join(state)
 
 class IA:
-    def __init__(self, states, Q_matrix):
+    def __init__(self, Q_matrix):
         self.Q = Q_matrix
-        self.states = states
     
+    def available_actions(self, state):
+        return [i for i in range(9) if state[i] == ' ']
+
     def play(self, current_state):
-        state_index = self.states.index(current_state)
-        action = np.argmax(self.Q[state_index])
-        move = self.states[action]
-
-        action_index = next(i for i in range(len(current_state)) if current_state[i] != move[i])
-
-        row = action_index // 3
-        col = action_index % 3
+        print(current_state)
+    
+    # Obtener todas las acciones posibles para el estado actual
+        possible_actions = self.available_actions(current_state)
+        
+        # Obtener los valores Q para todas las acciones posibles
+        q_values = [self.Q.get((current_state, action), 0) for action in possible_actions]
+        
+        # Encontrar el valor máximo de Q
+        max_q_value = max(q_values)
+        
+        # Filtrar las acciones que tienen el valor máximo de Q
+        best_actions = [action for action, q_value in zip(possible_actions, q_values) if q_value == max_q_value]
+        
+        # Seleccionar una acción aleatoria de las mejores acciones
+        action = random.choice(best_actions)
+        
+        # Calcular la fila y columna de la acción
+        row = action // 3
+        col = action % 3
         print(row, col)
+        
+        # Realizar el movimiento
         on_click(row, col)
 
 
-def start_game(states, Q_matrix):
+def start_game(Q_matrix):
     global ia
     global Q
     global possible_states
     Q = Q_matrix
-    possible_states = states
-    ia = IA(possible_states, Q)
+    ia = IA(Q)
+    if (current_player == "O"):
+        ia.play(check_state())
     root.mainloop()
+
+def load_Q():
+    Q = {}
+    with open("./Q_matrix.txt") as file:
+        for line in file:
+            key, value = line.strip().split(": ")
+            state, action = eval(key)
+            Q[(state, action)] = float(value)
+    return Q
+
+if __name__ == "__main__":
+    Q = load_Q()
+    start_game(Q)
