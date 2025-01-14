@@ -163,5 +163,3 @@ plt.show()
 save_Q_Matrix(Q)
 
 # start_game(Q)
-
-
